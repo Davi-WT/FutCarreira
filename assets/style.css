@@ -1,12 +1,12 @@
 :root {
-    --bg: #f4f7f2;
-    --ink: #142019;
-    --muted: #667266;
-    --line: #dce5d8;
-    --brand: #1d7a3a;
-    --brand-dark: #115226;
-    --danger: #b12f2f;
-    --card: #ffffff;
+    --bg: #101510;
+    --ink: #edf5ee;
+    --muted: #a9b7aa;
+    --line: #2b382c;
+    --brand: #35a85d;
+    --brand-dark: #278448;
+    --danger: #ff8b8b;
+    --card: #172017;
 }
 
 * {
@@ -19,17 +19,6 @@ body {
     background: var(--bg);
     color: var(--ink);
     font-family: Arial, Helvetica, sans-serif;
-}
-
-body.dark-theme {
-    --bg: #101510;
-    --ink: #edf5ee;
-    --muted: #a9b7aa;
-    --line: #2b382c;
-    --brand: #35a85d;
-    --brand-dark: #278448;
-    --danger: #ff8b8b;
-    --card: #172017;
 }
 
 a {
@@ -61,7 +50,7 @@ a {
 }
 
 .match-shell {
-    grid-template-rows: 54px minmax(0, 170px) minmax(0, 1fr);
+    grid-template-rows: 54px minmax(0, 220px) minmax(0, 1fr);
 }
 
 .hero,
@@ -216,13 +205,6 @@ select {
     padding: 12px 14px;
     color: var(--ink);
     font: inherit;
-    background: #fff;
-}
-
-body.dark-theme input,
-body.dark-theme select {
-    border-color: var(--line);
-    color: var(--ink);
     background: #202b20;
 }
 
@@ -235,16 +217,14 @@ body.dark-theme select {
     border-radius: 8px;
     padding: 0 16px;
     color: var(--ink);
-    background: #fff;
+    background: #202b20;
     font: inherit;
     font-weight: 700;
     cursor: pointer;
 }
 
-body.dark-theme .button {
-    border-color: var(--line);
-    color: var(--ink);
-    background: #202b20;
+.button:hover {
+    border-color: var(--brand);
 }
 
 .button.primary {
@@ -262,21 +242,13 @@ body.dark-theme .button {
 }
 
 .button.danger {
-    border-color: #f0c9c9;
-    color: var(--danger);
-    background: #fff6f6;
-}
-
-body.dark-theme .button.danger {
     border-color: #583232;
+    color: var(--danger);
     background: #2a1919;
 }
 
-.button.live-speed {
-    margin-top: 10px;
-    border-color: var(--line);
-    color: var(--ink);
-    background: color-mix(in srgb, var(--brand) 12%, var(--card));
+.button.danger:hover {
+    border-color: var(--brand);
 }
 
 .player-grid {
@@ -291,7 +263,7 @@ body.dark-theme .button.danger {
     padding: 14px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: #f9fbf8;
+    background: color-mix(in srgb, var(--card) 82%, var(--bg));
 }
 
 .player-grid strong,
@@ -405,14 +377,102 @@ body.dark-theme .button.danger {
     font-size: 15px;
 }
 
-.match-score h1 {
-    margin-bottom: 4px;
-    color: var(--brand);
-    font-size: clamp(36px, 5vw, 54px);
+.match-score {
+    padding: 14px 16px;
+    overflow: hidden;
 }
 
-.match-score h2 {
-    margin: 0 0 6px;
+.match-score p {
+    margin: 4px 0;
+}
+
+.match-score .button {
+    min-height: 36px;
+}
+
+.scoreboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(120px, .42fr) minmax(0, 1fr);
+    align-items: center;
+    min-height: 88px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card) 82%, var(--bg));
+}
+
+.score-team,
+.score-center {
+    display: grid;
+    place-items: center;
+    min-height: 88px;
+    padding: 10px 16px;
+    text-align: center;
+}
+
+.score-team {
+    position: relative;
+    font-size: clamp(20px, 3vw, 36px);
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.score-team-home {
+    border-right: 1px solid var(--line);
+}
+
+.score-team-away {
+    border-left: 1px solid var(--line);
+}
+
+.score-center {
+    color: #fff;
+    background: var(--brand);
+}
+
+.score-center strong {
+    font-size: clamp(38px, 6vw, 70px);
+    line-height: .9;
+}
+
+.score-center > span {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.match-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+}
+
+.half-time-message {
+    display: none;
+    flex-basis: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--brand);
+    border-radius: 8px;
+    color: #fff;
+    background: color-mix(in srgb, var(--brand) 32%, var(--card));
+    font-weight: 800;
+    text-align: center;
+}
+
+.half-time-message.is-visible {
+    display: block;
+}
+
+.match-controls .button {
+    flex: 1 1 130px;
+}
+
+.match-controls .button.is-active {
+    border-color: var(--brand);
+    color: #fff;
+    background: var(--brand);
 }
 
 .career-columns {
@@ -435,9 +495,23 @@ body.dark-theme .button.danger {
 }
 
 .next-match strong {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     margin-top: 4px;
-    font-size: 20px;
+    font-size: clamp(34px, 4.8vw, 58px);
+    line-height: 1.05;
+}
+
+.next-match strong span {
+    min-width: 0;
+    color: var(--ink);
+}
+
+.next-match strong b {
+    color: var(--brand);
+    font-size: .58em;
 }
 
 .next-match p {
@@ -486,12 +560,12 @@ body.dark-theme .button.danger {
     margin-top: 10px;
     padding: 10px 12px;
     border-radius: 8px;
-    background: #edf7ed;
+    background: color-mix(in srgb, var(--brand) 12%, var(--card));
 }
 
 .notice.danger {
     color: var(--danger);
-    background: #fff0f0;
+    background: #2a1919;
 }
 
 .actions,

@@ -43,7 +43,6 @@ $situation = playerMatchSituation($player);
         <nav class="appbar">
             <a class="brand" href="career.php">FutCarreira</a>
             <div class="appbar-actions">
-                <button class="button" type="button" id="theme-toggle">Tema escuro</button>
                 <form method="post" onsubmit="return confirm('Sair vai reiniciar a carreira por enquanto. Continuar?')">
                     <input type="hidden" name="action" value="logout">
                     <button class="button danger" type="submit">Sair</button>
@@ -66,6 +65,7 @@ $situation = playerMatchSituation($player);
                     <div><span>Gols na temporada</span><strong><?= e($player['goals']) ?></strong></div>
                     <div><span>Assistências na temporada</span><strong><?= e($player['assists']) ?></strong></div>
                     <div><span>Partidas na temporada</span><strong><?= e($player['appearances']) ?></strong></div>
+                    <div><span>Nota média</span><strong><?= e(playerAverageRating($player)) ?></strong></div>
                 </div>
             </article>
 
@@ -92,7 +92,7 @@ $situation = playerMatchSituation($player);
                 <?php if ($fixture && $opponent): ?>
                     <div class="next-match">
                         <span>Rodada <?= e($fixture['round_number']) ?></span>
-                        <strong><?= e($player['club_name']) ?> x <?= e($opponent['name']) ?></strong>
+                        <strong><span style="font-size:.8em;"><?= e($player['club_name']) ?></span><b>x</b><span style="font-size:.8em;"><?= e($opponent['name']) ?></span></strong>
                         <p><?= e($opponent['name']) ?> está em <?= e($opponentPosition) ?>º na liga.</p>
                     </div>
 
@@ -131,21 +131,5 @@ $situation = playerMatchSituation($player);
             </article>
         </section>
     </main>
-    <script>
-        const themeToggle = document.querySelector('#theme-toggle');
-        const savedTheme = localStorage.getItem('futcarreira-theme');
-
-        if (savedTheme === 'dark') {
-            document.body.classList.add('dark-theme');
-            themeToggle.textContent = 'Tema claro';
-        }
-
-        themeToggle.addEventListener('click', () => {
-            document.body.classList.toggle('dark-theme');
-            const isDark = document.body.classList.contains('dark-theme');
-            localStorage.setItem('futcarreira-theme', isDark ? 'dark' : 'light');
-            themeToggle.textContent = isDark ? 'Tema claro' : 'Tema escuro';
-        });
-    </script>
 </body>
 </html>

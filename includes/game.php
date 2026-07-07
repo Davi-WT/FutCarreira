@@ -153,10 +153,6 @@ function generateSeasonFixturesIfNeeded(int $clubId): void
 
     $check = db()->prepare('SELECT COUNT(*) FROM fixtures WHERE season_id = ? AND division_id = ?');
     $check->execute([$seasonId, $divisionId]);
-    if ((int) $check->fetchColumn() > 0) {
-        return;
-    }
-
     $clubs = db()->prepare('SELECT id FROM clubs WHERE division_id = ? ORDER BY reputation DESC, id');
     $clubs->execute([$divisionId]);
     $clubIds = array_map('intval', array_column($clubs->fetchAll(), 'id'));
@@ -165,18 +161,78 @@ function generateSeasonFixturesIfNeeded(int $clubId): void
         return;
     }
 
-    $round = 1;
+    if ((int) $check->fetchColumn() > 0) {
+        if (!canRegenerateFixtures($seasonId, $divisionId, count($clubIds))) {
+            return;
+        }
+
+        db()->prepare('DELETE FROM fixtures WHERE season_id = ? AND division_id = ?')->execute([$seasonId, $divisionId]);
+    }
+
     $insert = db()->prepare(
         "INSERT INTO fixtures (season_id, division_id, round_number, home_club_id, away_club_id, user_match)
          VALUES (?, ?, ?, ?, ?, ?)"
     );
 
-    for ($i = 0; $i < count($clubIds); $i++) {
-        for ($j = $i + 1; $j < count($clubIds); $j++) {
-            $insert->execute([$seasonId, $divisionId, $round++, $clubIds[$i], $clubIds[$j], (int) ($clubIds[$i] === $clubId || $clubIds[$j] === $clubId)]);
-            $insert->execute([$seasonId, $divisionId, $round++, $clubIds[$j], $clubIds[$i], (int) ($clubIds[$i] === $clubId || $clubIds[$j] === $clubId)]);
+    $teams = $clubIds;
+    if (count($teams) % 2 !== 0) {
+        $teams[] = null;
+    }
+
+    $teamCount = count($teams);
+    $roundsPerLeg = $teamCount - 1;
+    $matchesPerRound = intdiv($teamCount, 2);
+
+    for ($leg = 0; $leg < 2; $leg++) {
+        $rotation = $teams;
+        for ($roundIndex = 0; $roundIndex < $roundsPerLeg; $roundIndex++) {
+            $roundNumber = ($leg * $roundsPerLeg) + $roundIndex + 1;
+
+            for ($matchIndex = 0; $matchIndex < $matchesPerRound; $matchIndex++) {
+                $first = $rotation[$matchIndex];
+                $second = $rotation[$teamCount - 1 - $matchIndex];
+
+                if ($first === null || $second === null) {
+                    continue;
+                }
+
+                $home = (($roundIndex + $matchIndex) % 2 === 0) ? $first : $second;
+                $away = $home === $first ? $second : $first;
+
+                if ($leg === 1) {
+                    [$home, $away] = [$away, $home];
+                }
+
+                $insert->execute([$seasonId, $divisionId, $roundNumber, $home, $away, (int) ($home === $clubId || $away === $clubId)]);
+            }
+
+            $fixed = array_shift($rotation);
+            $last = array_pop($rotation);
+            array_unshift($rotation, $fixed, $last);
         }
     }
+}
+
+function canRegenerateFixtures(int $seasonId, int $divisionId, int $clubCount): bool
+{
+    $played = db()->prepare('SELECT COUNT(*) FROM fixtures WHERE season_id = ? AND division_id = ? AND played = 1');
+    $played->execute([$seasonId, $divisionId]);
+    if ((int) $played->fetchColumn() > 0) {
+        return false;
+    }
+
+    $maxRoundMatches = db()->prepare(
+        'SELECT COALESCE(MAX(total), 0)
+         FROM (
+            SELECT COUNT(*) total
+            FROM fixtures
+            WHERE season_id = ? AND division_id = ?
+            GROUP BY round_number
+         ) rounds'
+    );
+    $maxRoundMatches->execute([$seasonId, $divisionId]);
+
+    return (int) $maxRoundMatches->fetchColumn() < intdiv($clubCount, 2);
 }
 
 function activeSeasonId(): int
@@ -227,6 +283,7 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
     $userInMatch = $isUserHome || $isUserAway;
     $injured = false;
     $starts = $userInMatch && $player && (int) $player['stamina'] >= 50;
+    $minutesPlayed = $starts && $player ? playerMinutesPlayed($player) : 0;
     $events = [];
     $homeOverall = clubOverall((int) $fixture['home_club_id']);
     $awayOverall = clubOverall((int) $fixture['away_club_id']);
@@ -258,16 +315,24 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
 
     if ($starts && $player) {
         $performance = random_int(1, 100) + (int) $player['overall'];
+        $matchRating = playerMatchRating($player, $performance);
         if ($performance > 112 && $player['position'] !== 'GOL' && userTeamScored($isUserHome, $homeGoalMinutes, $awayGoalMinutes)) {
             db()->prepare('UPDATE players SET goals = goals + 1 WHERE id = ?')->execute([$player['id']]);
+            $matchRating += 0.7;
             $events[] = [userGoalMinute($isUserHome, $homeGoalMinutes, $awayGoalMinutes), $player['name'] . ' aparece na área e marca um gol importante.'];
         }
         if ($performance > 98 && random_int(0, 1) === 1) {
             db()->prepare('UPDATE players SET assists = assists + 1 WHERE id = ?')->execute([$player['id']]);
+            $matchRating += 0.4;
             $events[] = [random_int(10, 88), $player['name'] . ' dá um passe decisivo e levanta a torcida.'];
         }
-        db()->prepare('UPDATE players SET appearances = appearances + 1 WHERE id = ?')
-            ->execute([$player['id']]);
+        $matchRating = max(4.0, min(10.0, $matchRating));
+        db()->prepare('UPDATE players SET appearances = appearances + 1, season_rating_total = season_rating_total + ?, season_rating_count = season_rating_count + 1 WHERE id = ?')
+            ->execute([$matchRating, $player['id']]);
+        $events[] = [90, $player['name'] . ' termina a partida com nota ' . number_format($matchRating, 1, ',', '.') . '.'];
+        if ($minutesPlayed < 90) {
+            $events[] = [$minutesPlayed, $player['name'] . ' deixa o campo após ' . $minutesPlayed . ' minutos.'];
+        }
     } elseif ($userInMatch && $player) {
         db()->prepare('UPDATE players SET bench_games = bench_games + 1 WHERE id = ?')
             ->execute([$player['id']]);
@@ -289,32 +354,98 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
         $eventInsert->execute([$fixtureId, $event[0], $event[1]]);
     }
 
-    $status = updatePlayerProgressAfterMatch($fixture, $starts, $injured);
+    if ($userInMatch) {
+        simulateOtherFixturesInRound($fixture, $fixtureId);
+    }
+
+    $status = updatePlayerProgressAfterMatch($fixture, $starts, $injured, $minutesPlayed);
 
     return ['fixture' => fixtureById($fixtureId), 'events' => eventsForFixture($fixtureId), 'player_status' => $status];
 }
 
-function updatePlayerProgressAfterMatch(array $fixture, bool $starts, bool $injured): string
+function simulateOtherFixturesInRound(array $fixture, int $currentFixtureId): void
+{
+    $stmt = db()->prepare(
+        'SELECT id FROM fixtures
+         WHERE season_id = ? AND division_id = ? AND round_number = ? AND played = 0 AND id <> ?'
+    );
+    $stmt->execute([$fixture['season_id'], $fixture['division_id'], $fixture['round_number'], $currentFixtureId]);
+
+    foreach ($stmt->fetchAll() as $row) {
+        simulateComputerFixture((int) $row['id']);
+    }
+}
+
+function simulateComputerFixture(int $fixtureId): void
+{
+    $fixture = fixtureById($fixtureId);
+    if (!$fixture || (int) $fixture['played'] === 1) {
+        return;
+    }
+
+    $homeGoals = 0;
+    $awayGoals = 0;
+    $homeOverall = clubOverall((int) $fixture['home_club_id']);
+    $awayOverall = clubOverall((int) $fixture['away_club_id']);
+
+    for ($minute = 1; $minute <= 90; $minute++) {
+        if (chance(goalChancePerMinute($homeOverall, $awayOverall))) {
+            $homeGoals++;
+        }
+
+        if (chance(goalChancePerMinute($awayOverall, $homeOverall))) {
+            $awayGoals++;
+        }
+    }
+
+    db()->prepare('UPDATE fixtures SET home_goals = ?, away_goals = ?, played = 1 WHERE id = ?')
+        ->execute([$homeGoals, $awayGoals, $fixtureId]);
+}
+
+function playerMatchRating(array $player, int $performance): float
+{
+    $base = 5.2 + (($performance - 85) / 28);
+
+    if ((int) $player['stamina'] >= 75) {
+        $base += 0.25;
+    }
+
+    return round($base + (random_int(-6, 8) / 10), 1);
+}
+
+function playerAverageRating(array $player): string
+{
+    $count = (int) ($player['season_rating_count'] ?? 0);
+    if ($count <= 0) {
+        return '-';
+    }
+
+    return number_format(((float) $player['season_rating_total']) / $count, 1, ',', '.');
+}
+
+function updatePlayerProgressAfterMatch(array $fixture, bool $starts, bool $injured, int $minutesPlayed): string
 {
     $player = userPlayer();
     if (!$player) {
         return '';
     }
 
-    $staminaCost = playerStaminaCost($player);
+    $staminaSpent = playerStaminaSpent($player, $minutesPlayed);
+    $staminaRecovered = playerStaminaRecovery($staminaSpent, $starts);
+    $newStamina = min(100, max(0, (int) $player['stamina'] - $staminaSpent) + $staminaRecovered);
 
     if ($starts && random_int(1, 100) <= 55) {
-        db()->prepare('UPDATE players SET overall = LEAST(potential, overall + 1), stamina = GREATEST(0, stamina - ?), injured_until_match = NULL WHERE id = ?')->execute([$staminaCost, $player['id']]);
-        return 'Boa atuação: seu overall evoluiu.';
+        db()->prepare('UPDATE players SET overall = LEAST(potential, overall + 1), stamina = ?, injured_until_match = NULL WHERE id = ?')->execute([$newStamina, $player['id']]);
+        return '';
     }
 
     if ($starts) {
-        db()->prepare('UPDATE players SET stamina = GREATEST(0, stamina - ?), injured_until_match = NULL WHERE id = ?')->execute([$staminaCost, $player['id']]);
-        return 'Você ganhou minutos e perdeu ' . $staminaCost . '% de energia.';
+        db()->prepare('UPDATE players SET stamina = ?, injured_until_match = NULL WHERE id = ?')->execute([$newStamina, $player['id']]);
+        return '';
     }
 
-    db()->prepare('UPDATE players SET stamina = LEAST(100, stamina + 18), injured_until_match = NULL WHERE id = ?')->execute([$player['id']]);
-    return 'Você ficou no banco e recuperou energia.';
+    db()->prepare('UPDATE players SET stamina = ?, injured_until_match = NULL WHERE id = ?')->execute([random_int(90, 100), $player['id']]);
+    return '';
 }
 
 function fixtureById(int $fixtureId): ?array
@@ -371,6 +502,42 @@ function playerStaminaCost(array $player): int
     $physical = (int) ($player['physical'] ?? 60);
 
     return max(6, min(14, 16 - intdiv($physical, 10)));
+}
+
+function playerMinutesPlayed(array $player): int
+{
+    $stamina = (int) $player['stamina'];
+    if ($stamina >= 72) {
+        return 90;
+    }
+
+    if ($stamina >= 60) {
+        return random_int(65, 82);
+    }
+
+    return random_int(45, 68);
+}
+
+function playerStaminaSpent(array $player, int $minutesPlayed): int
+{
+    if ($minutesPlayed <= 0) {
+        return 0;
+    }
+
+    return max(1, (int) ceil(playerStaminaCost($player) * ($minutesPlayed / 90)));
+}
+
+function playerStaminaRecovery(int $staminaSpent, bool $played): int
+{
+    if (!$played) {
+        return 12;
+    }
+
+    if ($staminaSpent <= 1) {
+        return 0;
+    }
+
+    return random_int(1, max(1, $staminaSpent - 1));
 }
 
 function opponentForFixture(array $fixture, int $clubId): ?array

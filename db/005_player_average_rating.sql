@@ -1,0 +1,5 @@
+USE futcarreira;
+
+ALTER TABLE players
+  ADD COLUMN IF NOT EXISTS season_rating_total DECIMAL(6,2) NOT NULL DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS season_rating_count INT NOT NULL DEFAULT 0;

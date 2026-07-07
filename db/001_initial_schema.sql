@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS players (
   goals INT NOT NULL DEFAULT 0,
   assists INT NOT NULL DEFAULT 0,
   appearances INT NOT NULL DEFAULT 0,
+  season_rating_total DECIMAL(6,2) NOT NULL DEFAULT 0.00,
+  season_rating_count INT NOT NULL DEFAULT 0,
   bench_games INT NOT NULL DEFAULT 0,
   injured_until_match INT DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
