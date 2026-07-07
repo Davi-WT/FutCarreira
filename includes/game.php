@@ -274,7 +274,7 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
 {
     $fixture = fixtureById($fixtureId);
     if (!$fixture || (int) $fixture['played'] === 1) {
-        return ['fixture' => $fixture, 'events' => eventsForFixture($fixtureId), 'player_status' => 'Partida já encerrada.'];
+        return ['fixture' => $fixture, 'events' => eventsForFixture($fixtureId), 'player_status' => 'Partida já encerrada.', 'player_match' => null];
     }
 
     $player = userPlayer();
@@ -284,6 +284,10 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
     $injured = false;
     $starts = $userInMatch && $player && (int) $player['stamina'] >= 50;
     $minutesPlayed = $starts && $player ? playerMinutesPlayed($player) : 0;
+    $preMatchStamina = $player ? (int) $player['stamina'] : null;
+    $totalStaminaSpent = $starts && $player ? playerStaminaSpent($player, $minutesPlayed) : 0;
+    $matchRating = null;
+    $minuteStates = [];
     $events = [];
     $homeOverall = clubOverall((int) $fixture['home_club_id']);
     $awayOverall = clubOverall((int) $fixture['away_club_id']);
@@ -291,26 +295,45 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
     $awayGoals = 0;
     $homeGoalMinutes = [];
     $awayGoalMinutes = [];
+    $dominance = 0;
 
     for ($minute = 1; $minute <= 90; $minute++) {
-        $homeChance = goalChancePerMinute($homeOverall, $awayOverall);
-        $awayChance = goalChancePerMinute($awayOverall, $homeOverall);
+        $dominance = (int) round($dominance * 0.92);
+        $overallPressure = (int) round(($homeOverall - $awayOverall) / 8);
+        $dominance += random_int(-4, 4) + $overallPressure;
+        $dominance = max(-100, min(100, $dominance));
+
+        if ($withEvents && chance(randomNarrationChance($minute))) {
+            $moment = randomMatchMoment($fixture, $homeGoals, $awayGoals);
+            $dominance += $moment['side'] === 'home' ? $moment['impact'] : -$moment['impact'];
+            $dominance = max(-100, min(100, $dominance));
+            $events[] = [$minute, $moment['text']];
+        }
+
+        $homeChance = goalChancePerMinute($homeOverall, $awayOverall) * dominanceGoalMultiplier($dominance, 'home');
+        $awayChance = goalChancePerMinute($awayOverall, $homeOverall) * dominanceGoalMultiplier($dominance, 'away');
 
         if (chance($homeChance)) {
             $homeGoals++;
             $homeGoalMinutes[] = $minute;
+            $dominance = min(100, $dominance + 12);
             $events[] = [$minute, $fixture['home_name'] . ' faz gol. Placar: ' . $homeGoals . ' x ' . $awayGoals . '.'];
         }
 
         if (chance($awayChance)) {
             $awayGoals++;
             $awayGoalMinutes[] = $minute;
+            $dominance = max(-100, $dominance - 12);
             $events[] = [$minute, $fixture['away_name'] . ' faz gol. Placar: ' . $homeGoals . ' x ' . $awayGoals . '.'];
         }
 
-        if ($withEvents && chance(randomNarrationChance($minute))) {
-            $events[] = [$minute, randomMatchNarration($fixture, $homeGoals, $awayGoals)];
-        }
+        $minuteStates[$minute] = [
+            'home' => $homeGoals,
+            'away' => $awayGoals,
+            'dominance' => $dominance,
+            'rating' => null,
+            'stamina' => $preMatchStamina,
+        ];
     }
 
     if ($starts && $player) {
@@ -333,6 +356,15 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
         if ($minutesPlayed < 90) {
             $events[] = [$minutesPlayed, $player['name'] . ' deixa o campo após ' . $minutesPlayed . ' minutos.'];
         }
+
+        foreach ($minuteStates as $minute => &$state) {
+            $activeMinute = min($minute, $minutesPlayed);
+            $ratingProgress = $minutesPlayed > 0 ? $activeMinute / $minutesPlayed : 0;
+            $staminaProgress = $minutesPlayed > 0 ? min(1, $activeMinute / $minutesPlayed) : 0;
+            $state['rating'] = round(6.0 + (($matchRating - 6.0) * $ratingProgress), 1);
+            $state['stamina'] = max(0, (int) $preMatchStamina - (int) ceil($totalStaminaSpent * $staminaProgress));
+        }
+        unset($state);
     } elseif ($userInMatch && $player) {
         db()->prepare('UPDATE players SET bench_games = bench_games + 1 WHERE id = ?')
             ->execute([$player['id']]);
@@ -359,8 +391,32 @@ function simulateFixture(int $fixtureId, bool $withEvents = true): array
     }
 
     $status = updatePlayerProgressAfterMatch($fixture, $starts, $injured, $minutesPlayed);
+    $updatedPlayer = userPlayer();
+    $playerMatch = null;
+    if ($userInMatch && $player) {
+        $playerMatch = [
+            'rating' => $starts ? $matchRating : null,
+            'minutes' => $minutesPlayed,
+            'stamina' => $updatedPlayer ? (int) $updatedPlayer['stamina'] : (int) $player['stamina'],
+            'pre_stamina' => $preMatchStamina,
+            'status' => playerMatchStatusLabel($starts, $minutesPlayed),
+        ];
+    }
 
-    return ['fixture' => fixtureById($fixtureId), 'events' => eventsForFixture($fixtureId), 'player_status' => $status];
+    return ['fixture' => fixtureById($fixtureId), 'events' => eventsForFixture($fixtureId), 'player_status' => $status, 'player_match' => $playerMatch, 'minute_states' => $minuteStates];
+}
+
+function playerMatchStatusLabel(bool $starts, int $minutesPlayed): string
+{
+    if (!$starts) {
+        return 'Não entrou na partida';
+    }
+
+    if ($minutesPlayed < 90) {
+        return 'Saiu aos ' . $minutesPlayed . ' minutos';
+    }
+
+    return 'Jogou a partida inteira';
 }
 
 function simulateOtherFixturesInRound(array $fixture, int $currentFixtureId): void
@@ -634,6 +690,13 @@ function goalChancePerMinute(int $attackingOverall, int $defendingOverall): floa
     return max(0.004, min(0.045, 0.018 * $ratio));
 }
 
+function dominanceGoalMultiplier(int $dominance, string $side): float
+{
+    $advantage = $side === 'home' ? $dominance : -$dominance;
+
+    return max(0.55, min(1.9, 1 + ($advantage / 100)));
+}
+
 function chance(float $probability): bool
 {
     return random_int(1, 100000) <= (int) round($probability * 100000);
@@ -648,27 +711,37 @@ function randomNarrationChance(int $minute): float
     return 0.12;
 }
 
+function randomMatchMoment(array $fixture, int $homeGoals, int $awayGoals): array
+{
+    $side = random_int(0, 1) === 1 ? 'home' : 'away';
+    $attackingTeam = $side === 'home' ? $fixture['home_name'] : $fixture['away_name'];
+    $defendingTeam = $side === 'home' ? $fixture['away_name'] : $fixture['home_name'];
+    $templates = [
+        ['%s está no ataque e empurra o adversário para trás.', 'attack', 16],
+        ['Bela defesa do goleiro de %s.', 'defense', 9],
+        ['%s troca passes perto da área.', 'attack', 11],
+        ['%s tenta acelerar pela ponta.', 'attack', 10],
+        ['A defesa de %s corta o cruzamento no momento certo.', 'defense', 7],
+        ['%s arrisca de fora da área e leva perigo.', 'attack', 13],
+        ['%s recupera a bola no meio-campo.', 'attack', 8],
+        ['A torcida de %s cresce no jogo.', 'attack', 6],
+        ['%s escapa em contra-ataque.', 'attack', 14],
+        ['O goleiro de %s sai bem do gol e fica com a bola.', 'defense', 8],
+        ['%s pressiona buscando mudar o placar de ' . $homeGoals . ' x ' . $awayGoals . '.', 'attack', 15],
+    ];
+    $moment = $templates[array_rand($templates)];
+    $team = $moment[1] === 'defense' ? $defendingTeam : $attackingTeam;
+
+    return [
+        'text' => sprintf($moment[0], $team),
+        'side' => $moment[1] === 'defense' ? ($side === 'home' ? 'away' : 'home') : $side,
+        'impact' => $moment[2],
+    ];
+}
+
 function randomMatchNarration(array $fixture, int $homeGoals, int $awayGoals): string
 {
-    $attackingTeam = random_int(0, 1) === 1 ? $fixture['home_name'] : $fixture['away_name'];
-    $defendingTeam = $attackingTeam === $fixture['home_name'] ? $fixture['away_name'] : $fixture['home_name'];
-    $templates = [
-        '%s está no ataque e empurra o adversário para trás.',
-        'Bela defesa do goleiro de %s.',
-        '%s troca passes perto da área.',
-        '%s tenta acelerar pela ponta.',
-        'A defesa de %s corta o cruzamento no momento certo.',
-        '%s arrisca de fora da área e leva perigo.',
-        '%s recupera a bola no meio-campo.',
-        'A torcida de %s cresce no jogo.',
-        '%s escapa em contra-ataque.',
-        'O goleiro de %s sai bem do gol e fica com a bola.',
-        '%s pressiona buscando mudar o placar de ' . $homeGoals . ' x ' . $awayGoals . '.',
-    ];
-    $template = $templates[array_rand($templates)];
-    $team = str_contains($template, 'defesa de') || str_contains($template, 'goleiro de') ? $defendingTeam : $attackingTeam;
-
-    return sprintf($template, $team);
+    return randomMatchMoment($fixture, $homeGoals, $awayGoals)['text'];
 }
 
 function userTeamScored(bool $isUserHome, array $homeGoalMinutes, array $awayGoalMinutes): bool

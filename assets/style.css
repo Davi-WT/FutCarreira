@@ -50,7 +50,7 @@ a {
 }
 
 .match-shell {
-    grid-template-rows: 54px minmax(0, 220px) minmax(0, 1fr);
+    grid-template-rows: 54px minmax(0, 300px) minmax(0, 1fr);
 }
 
 .hero,
@@ -439,6 +439,70 @@ select {
     margin-top: 6px;
     font-size: 13px;
     font-weight: 800;
+}
+
+.match-side-info {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, .7fr) minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.match-player-note,
+.match-reserved,
+.match-player-stamina {
+    min-height: 64px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card) 82%, var(--bg));
+}
+
+.match-reserved {
+    display: grid;
+    align-content: center;
+}
+
+.match-player-note span,
+.match-player-stamina span {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.match-player-note strong,
+.match-player-stamina strong {
+    display: block;
+    margin-top: 2px;
+    font-size: 26px;
+}
+
+.dominance-bar {
+    position: relative;
+    height: 16px;
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #0f170f;
+}
+
+.dominance-bar.player-right {
+    flex-direction: row-reverse;
+}
+
+.dominance-fill {
+    height: 100%;
+    width: 50%;
+    transition: width .25s ease;
+}
+
+.dominance-fill.player {
+    background: #75d98a;
+}
+
+.dominance-fill.opponent {
+    background: #176b32;
 }
 
 .match-controls {

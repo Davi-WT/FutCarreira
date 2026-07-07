@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $fixtureId = (int) ($_GET['id'] ?? 0);
 $mode = $_GET['mode'] ?? 'watch';
+$preMatchPlayer = userPlayer();
 $result = simulateFixture($fixtureId, $mode === 'watch');
 
 if ($mode === 'skip') {
@@ -24,6 +25,10 @@ if ($mode === 'skip') {
 
 $fixture = $result['fixture'];
 $events = $result['events'];
+$playerMatch = $result['player_match'] ?? null;
+$minuteStates = $result['minute_states'] ?? [];
+$displayStamina = $preMatchPlayer ? (int) $preMatchPlayer['stamina'] : null;
+$playerIsHome = $preMatchPlayer && $fixture && (int) $fixture['home_club_id'] === (int) $preMatchPlayer['club_id'];
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -55,6 +60,22 @@ $events = $result['events'];
                     </div>
                     <div class="score-team score-team-away"><?= e($fixture['away_name']) ?></div>
                 </div>
+                <div class="match-side-info">
+                    <div class="match-player-note">
+                        <span>Nota</span>
+                        <strong id="live-rating"><?= $playerMatch && $playerMatch['rating'] !== null ? '6,0' : '-' ?></strong>
+                    </div>
+                    <div class="match-reserved">
+                        <div class="dominance-bar <?= $playerIsHome ? 'player-left' : 'player-right' ?>">
+                            <div class="dominance-fill player" id="dominance-player"></div>
+                            <div class="dominance-fill opponent" id="dominance-opponent"></div>
+                        </div>
+                    </div>
+                    <div class="match-player-stamina">
+                        <span>Estamina</span>
+                        <strong id="live-stamina"><?= $displayStamina !== null ? e($displayStamina) . '%' : '-' ?></strong>
+                    </div>
+                </div>
             </section>
 
             <section class="panel match-news-panel">
@@ -78,10 +99,16 @@ $events = $result['events'];
                 const watchMode = <?= json_encode($mode === 'watch') ?>;
                 const finalHome = <?= (int) $fixture['home_goals'] ?>;
                 const finalAway = <?= (int) $fixture['away_goals'] ?>;
+                const matchStates = <?= json_encode($minuteStates, JSON_UNESCAPED_UNICODE) ?>;
                 const eventNodes = [...document.querySelectorAll('.event')];
                 const homeScore = document.querySelector('#live-home');
                 const awayScore = document.querySelector('#live-away');
                 const liveMinute = document.querySelector('#live-minute');
+                const liveRating = document.querySelector('#live-rating');
+                const liveStamina = document.querySelector('#live-stamina');
+                const dominancePlayer = document.querySelector('#dominance-player');
+                const dominanceOpponent = document.querySelector('#dominance-opponent');
+                const playerIsHome = <?= json_encode($playerIsHome) ?>;
                 const halfTimeMessage = document.querySelector('#half-time-message');
                 const speedToggle = document.querySelector('#speed-toggle');
                 const pauseToggle = document.querySelector('#pause-toggle');
@@ -97,9 +124,39 @@ $events = $result['events'];
                 let paused = false;
                 let pausedAtHalfTime = false;
 
+                const formatRating = (rating) => {
+                    if (rating === null || rating === undefined) {
+                        return '-';
+                    }
+
+                    return Number(rating).toFixed(1).replace('.', ',');
+                };
+
+                const applyState = (state) => {
+                    if (!state) {
+                        return;
+                    }
+
+                    homeScore.textContent = state.home;
+                    awayScore.textContent = state.away;
+                    liveRating.textContent = formatRating(state.rating);
+                    if (state.stamina !== null && state.stamina !== undefined) {
+                        liveStamina.textContent = `${state.stamina}%`;
+                    }
+
+                    const dominance = Math.max(-100, Math.min(100, Number(state.dominance || 0)));
+                    const homeShare = 50 + (dominance * 0.45);
+                    const playerShare = playerIsHome ? homeShare : 100 - homeShare;
+                    dominancePlayer.style.width = `${playerShare}%`;
+                    dominanceOpponent.style.width = `${100 - playerShare}%`;
+                };
+
                 if (!watchMode) {
-                    homeScore.textContent = finalHome;
-                    awayScore.textContent = finalAway;
+                    applyState(matchStates[90]);
+                    if (!matchStates[90]) {
+                        homeScore.textContent = finalHome;
+                        awayScore.textContent = finalAway;
+                    }
                     liveMinute.textContent = 'Fim de jogo';
                     finished = true;
                     pauseToggle.textContent = 'Continuar';
@@ -111,6 +168,7 @@ $events = $result['events'];
                         pauseToggle.textContent = 'Pausar';
                         halfTimeMessage.classList.remove('is-visible');
                         liveMinute.textContent = minute < 90 ? `Minuto ${minute}` : 'Fim de jogo';
+                        applyState(matchStates[minute]);
 
                         eventNodes
                             .filter((node) => Number(node.dataset.minute) === minute)
@@ -118,13 +176,6 @@ $events = $result['events'];
                                 node.style.display = 'grid';
                                 node.scrollIntoView({ block: 'nearest' });
                                 const text = node.dataset.text || '';
-                                const score = text.match(/Placar: (\d+) x (\d+)/);
-                                if (score) {
-                                    home = Number(score[1]);
-                                    away = Number(score[2]);
-                                    homeScore.textContent = home;
-                                    awayScore.textContent = away;
-                                }
                             });
 
                         if (minute >= 90) {
@@ -186,8 +237,11 @@ $events = $result['events'];
                         clearInterval(timer);
                         minute = 90;
                         finished = true;
-                        homeScore.textContent = finalHome;
-                        awayScore.textContent = finalAway;
+                        applyState(matchStates[90]);
+                        if (!matchStates[90]) {
+                            homeScore.textContent = finalHome;
+                            awayScore.textContent = finalAway;
+                        }
                         liveMinute.textContent = 'Fim de jogo';
                         pauseToggle.textContent = 'Continuar';
                         pauseToggle.classList.remove('is-active');
