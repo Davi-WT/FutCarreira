@@ -187,7 +187,12 @@ a {
 
 .form {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+}
+
+.form .button {
+    grid-column: 1 / -1;
 }
 
 label {
@@ -289,7 +294,12 @@ select {
     overflow: hidden;
 }
 
-.career-stats,
+.career-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
 .match-info-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -546,12 +556,27 @@ select {
     min-height: 0;
 }
 
+.career-main-stack {
+    display: grid;
+    gap: 16px;
+    min-height: 0;
+}
+
 .career-columns > .panel,
+.career-main-stack > .panel,
 .match-news-panel {
     display: flex;
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
+}
+
+.calendar-grid {
+    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(120px, 1fr));
+}
+
+.calendar-grid div {
+    min-height: 62px;
 }
 
 .next-match {
@@ -694,6 +719,79 @@ select {
     margin: 0;
 }
 
+.player-info-shell {
+    width: min(1180px, calc(100% - 32px));
+}
+
+.player-info-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    align-items: end;
+    gap: 24px;
+    min-height: 260px;
+    margin-top: 14px;
+    padding: 32px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background:
+        linear-gradient(110deg, rgba(8, 32, 16, .94), rgba(11, 81, 38, .7)),
+        url('https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1500&q=80') center/cover;
+}
+
+.player-info-hero h1 {
+    margin: 0;
+    font-size: clamp(36px, 6vw, 72px);
+    line-height: .95;
+}
+
+.player-info-hero p:not(.eyebrow) {
+    max-width: 680px;
+    margin: 14px 0 0;
+    color: rgba(255, 255, 255, .82);
+    line-height: 1.6;
+}
+
+.player-info-overall {
+    min-height: 150px;
+    background: rgba(53, 168, 93, .24);
+    backdrop-filter: blur(2px);
+}
+
+.player-info-overall strong {
+    font-size: 58px;
+}
+
+.player-info-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.player-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.player-info-grid div {
+    min-height: 92px;
+}
+
+.player-info-grid strong {
+    font-size: 22px;
+}
+
+.player-value {
+    color: var(--brand);
+    font-size: 24px;
+}
+
+.trophies-panel {
+    grid-column: 1 / -1;
+}
+
+.empty-stat {
+    grid-column: 1 / -1;
+}
+
 @keyframes reveal {
     to {
         opacity: 1;
@@ -719,9 +817,22 @@ select {
 
     .appbar-actions form,
     .appbar-actions .button,
+    .form,
     .career-top-grid,
-    .career-columns {
+    .career-columns,
+    .player-info-hero,
+    .player-info-layout {
         display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .career-stats,
+    .match-info-grid,
+    .calendar-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .player-info-grid {
         grid-template-columns: 1fr;
     }
 

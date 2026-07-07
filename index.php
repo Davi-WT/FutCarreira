@@ -27,7 +27,7 @@ try {
             <div>
                 <p class="eyebrow">Modo carreira em PHP</p>
                 <h1>FutCarreira</h1>
-                <p>Crie seu jogador, comece na segunda divisão do país dele e acompanhe uma carreira com partidas, banco, lesões, evolução e transferências.</p>
+                <p>Crie seu jogador, escolha onde ele começa e acompanhe uma carreira com partidas, banco, lesões, evolução e transferências.</p>
             </div>
             <div class="score-card">
                 <span>Temporada</span>
@@ -75,6 +75,30 @@ try {
                     <label>
                         Nacionalidade
                         <select name="nationality" required>
+                            <?php foreach (countriesWithSecondDivision() as $country): ?>
+                                <option value="<?= e($country['code']) ?>"><?= e($country['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>
+                        Perna dominante
+                        <select name="dominant_foot" required>
+                            <?php foreach (dominantFeet() as $foot): ?>
+                                <option value="<?= e($foot) ?>"><?= e($foot) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>
+                        Altura (cm)
+                        <input type="number" name="height_cm" required min="140" max="220" value="175">
+                    </label>
+                    <label>
+                        Peso (kg)
+                        <input type="number" name="weight_kg" required min="45" max="130" value="70">
+                    </label>
+                    <label>
+                        País onde vai começar
+                        <select name="start_country" required>
                             <?php foreach (countriesWithSecondDivision() as $country): ?>
                                 <option value="<?= e($country['code']) ?>"><?= e($country['name']) ?></option>
                             <?php endforeach; ?>

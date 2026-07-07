@@ -25,10 +25,12 @@ if (!$player) {
 }
 
 $fixture = nextUserFixture((int) $player['id']);
+$previousFixture = previousUserFixture((int) $player['id']);
 $standings = leagueStandings((int) $player['division_id']);
 $opponent = $fixture ? opponentForFixture($fixture, (int) $player['club_id']) : null;
 $opponentPosition = $opponent ? teamLeaguePosition((int) $player['division_id'], (int) $opponent['id']) : null;
 $situation = playerMatchSituation($player);
+$weeksToTransferWindow = weeksUntilTransferWindow($player);
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -43,6 +45,7 @@ $situation = playerMatchSituation($player);
         <nav class="appbar">
             <a class="brand" href="career.php">FutCarreira</a>
             <div class="appbar-actions">
+                <a class="button" href="player_info.php">Informações do jogador</a>
                 <form method="post" onsubmit="return confirm('Sair vai reiniciar a carreira por enquanto. Continuar?')">
                     <input type="hidden" name="action" value="logout">
                     <button class="button danger" type="submit">Sair</button>
@@ -64,7 +67,7 @@ $situation = playerMatchSituation($player);
                     <div><span>Nacionalidade</span><strong><?= e(countryNameByCode($player['nationality'])) ?></strong></div>
                     <div><span>Gols na temporada</span><strong><?= e($player['goals']) ?></strong></div>
                     <div><span>Assistências na temporada</span><strong><?= e($player['assists']) ?></strong></div>
-                    <div><span>Partidas na temporada</span><strong><?= e($player['appearances']) ?></strong></div>
+                    <div><span>Jogos jogados na temporada</span><strong><?= e($player['appearances']) ?></strong></div>
                     <div><span>Nota média</span><strong><?= e(playerAverageRating($player)) ?></strong></div>
                 </div>
             </article>
@@ -87,8 +90,27 @@ $situation = playerMatchSituation($player);
         </section>
 
         <section class="career-columns">
-            <article class="panel career-match-panel">
-                <h2>Próxima partida</h2>
+            <div class="career-main-stack">
+                <article class="panel calendar-panel">
+                    <h2>Calendário</h2>
+                    <div class="match-info-grid calendar-grid">
+                        <div>
+                            <span>Partida anterior</span>
+                            <strong>
+                                <?php if ($previousFixture): ?>
+                                    <?= e($previousFixture['home_name']) ?> <?= e($previousFixture['home_goals']) ?> x <?= e($previousFixture['away_goals']) ?> <?= e($previousFixture['away_name']) ?>
+                                <?php else: ?>
+                                    Nenhuma
+                                <?php endif; ?>
+                            </strong>
+                        </div>
+                        <div><span>Semana atual</span><strong><?= e($player['current_round']) ?></strong></div>
+                        <div><span>Semanas para janela</span><strong><?= e($weeksToTransferWindow) ?></strong></div>
+                    </div>
+                </article>
+
+                <article class="panel career-match-panel">
+                    <h2>Próxima partida</h2>
                 <?php if ($fixture && $opponent): ?>
                     <div class="next-match">
                         <span>Rodada <?= e($fixture['round_number']) ?></span>
@@ -114,7 +136,8 @@ $situation = playerMatchSituation($player);
                 <?php else: ?>
                     <p class="muted">A temporada terminou. Em breve esta tela terá a rotina de fim de temporada.</p>
                 <?php endif; ?>
-            </article>
+                </article>
+            </div>
 
             <article class="panel league-panel">
                 <h2><?= e($player['league_name']) ?></h2>
@@ -130,6 +153,7 @@ $situation = playerMatchSituation($player);
                 </div>
             </article>
         </section>
+
     </main>
 </body>
 </html>

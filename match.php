@@ -114,7 +114,7 @@ $playerIsHome = $preMatchPlayer && $fixture && (int) $fixture['home_club_id'] ==
                 const pauseToggle = document.querySelector('#pause-toggle');
                 const skipToggle = document.querySelector('#skip-toggle');
                 const defaultSpeed = 1.5;
-                const fastSpeed = defaultSpeed * 3;
+                const fastSpeed = defaultSpeed * 4.5;
                 let currentSpeed = defaultSpeed;
                 let timer = null;
                 let minute = 0;

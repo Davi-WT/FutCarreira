@@ -14,6 +14,11 @@ function positions(): array
     return ['GOL', 'ZAG', 'LE', 'LD', 'VOL', 'MC', 'MEI', 'PE', 'PD', 'ATA'];
 }
 
+function dominantFeet(): array
+{
+    return ['Direita', 'Esquerda'];
+}
+
 function countriesWithSecondDivision(): array
 {
     return db()->query(
@@ -52,11 +57,26 @@ function countryNameByCode(string $code): string
     return (string) ($stmt->fetchColumn() ?: $code);
 }
 
-function createCareerPlayer(string $name, string $position, string $nationalityCode): int
+function createCareerPlayer(
+    string $name,
+    string $position,
+    string $nationalityCode,
+    string $dominantFoot,
+    int $heightCm,
+    int $weightKg,
+    string $startCountryCode
+): int
 {
     if (!in_array($position, positions(), true)) {
         throw new InvalidArgumentException('Posição inválida.');
     }
+
+    if (!in_array($dominantFoot, dominantFeet(), true)) {
+        throw new InvalidArgumentException('Perna dominante inválida.');
+    }
+
+    $heightCm = max(140, min(220, $heightCm));
+    $weightKg = max(45, min(130, $weightKg));
 
     $stmt = db()->prepare(
         "SELECT c.id
@@ -68,11 +88,11 @@ function createCareerPlayer(string $name, string $position, string $nationalityC
          ORDER BY c.reputation DESC, c.id
          LIMIT 1"
     );
-    $stmt->execute([$nationalityCode]);
+    $stmt->execute([$startCountryCode]);
     $clubId = (int) $stmt->fetchColumn();
 
     if (!$clubId) {
-        throw new RuntimeException('Não existe segunda divisão cadastrada para esse país.');
+        throw new RuntimeException('Não existe segunda divisão cadastrada para o país inicial.');
     }
 
     db()->beginTransaction();
@@ -82,9 +102,10 @@ function createCareerPlayer(string $name, string $position, string $nationalityC
     $insert = db()->prepare(
         "INSERT INTO players (
             club_id, user_controlled, name, position, nationality, overall, potential,
+            dominant_foot, height_cm, weight_kg, start_country,
             pace, dribbling, finishing, defending, passing, physical
          )
-         VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     $insert->execute([
         $clubId,
@@ -93,6 +114,10 @@ function createCareerPlayer(string $name, string $position, string $nationalityC
         $nationalityCode,
         $initialOverall,
         random_int(72, 88),
+        $dominantFoot,
+        $heightCm,
+        $weightKg,
+        $startCountryCode,
         $abilities['pace'],
         $abilities['dribbling'],
         $abilities['finishing'],
@@ -105,6 +130,53 @@ function createCareerPlayer(string $name, string $position, string $nationalityC
     db()->commit();
 
     return $playerId;
+}
+
+function previousUserFixture(int $playerId): ?array
+{
+    $player = userPlayer();
+    if (!$player) {
+        return null;
+    }
+
+    $stmt = db()->prepare(
+        "SELECT f.*, hc.name home_name, ac.name away_name
+         FROM fixtures f
+         JOIN clubs hc ON hc.id = f.home_club_id
+         JOIN clubs ac ON ac.id = f.away_club_id
+         WHERE f.season_id = ? AND f.played = 1
+           AND (f.home_club_id = ? OR f.away_club_id = ?)
+         ORDER BY f.round_number DESC, f.id DESC
+         LIMIT 1"
+    );
+    $stmt->execute([activeSeasonId(), $player['club_id'], $player['club_id']]);
+
+    return $stmt->fetch() ?: null;
+}
+
+function totalRoundsInDivision(int $divisionId): int
+{
+    $stmt = db()->prepare('SELECT COALESCE(MAX(round_number), 0) FROM fixtures WHERE season_id = ? AND division_id = ?');
+    $stmt->execute([activeSeasonId(), $divisionId]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+function weeksUntilTransferWindow(array $player): int
+{
+    $totalRounds = totalRoundsInDivision((int) $player['division_id']);
+    if ($totalRounds <= 0) {
+        return 0;
+    }
+
+    $currentWeek = max(1, (int) $player['current_round']);
+    $midSeasonWindowWeek = max(2, (int) ceil($totalRounds / 2));
+
+    if ($currentWeek <= $midSeasonWindowWeek) {
+        return max(0, $midSeasonWindowWeek - $currentWeek);
+    }
+
+    return max(0, ($totalRounds + 1) - $currentWeek);
 }
 
 function generatePlayerAbilities(string $position, int $overall): array
@@ -477,6 +549,24 @@ function playerAverageRating(array $player): string
     }
 
     return number_format(((float) $player['season_rating_total']) / $count, 1, ',', '.');
+}
+
+function playerMarketValue(array $player): string
+{
+    $overall = (int) ($player['overall'] ?? 58);
+    $potential = (int) ($player['potential'] ?? $overall);
+    $age = (int) ($player['age'] ?? 18);
+    $performanceBonus = ((int) ($player['goals'] ?? 0) * 120000) + ((int) ($player['assists'] ?? 0) * 90000);
+    $baseValue = max(150000, (($overall - 45) ** 2) * 22000);
+    $potentialBonus = max(0, $potential - $overall) * 180000;
+    $ageMultiplier = $age <= 21 ? 1.25 : ($age <= 27 ? 1.1 : 0.9);
+    $value = (int) round(($baseValue + $potentialBonus + $performanceBonus) * $ageMultiplier);
+
+    if ($value >= 1000000) {
+        return 'R$ ' . number_format($value / 1000000, 1, ',', '.') . ' mi';
+    }
+
+    return 'R$ ' . number_format($value / 1000, 0, ',', '.') . ' mil';
 }
 
 function updatePlayerProgressAfterMatch(array $fixture, bool $starts, bool $injured, int $minutesPlayed): string
